@@ -2,13 +2,12 @@ services:
   - type: web
     name: verse-exegesis-tool
     runtime: node
-    plan: starter
-    buildCommand: npm install && npm run build
+    plan: free
+    # --include=dev ensures Vite & friends are installed even if NODE_ENV=production.
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: OPENAI_API_KEY
         sync: false

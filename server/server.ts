@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { interlinearRouter } from './routes/interlinear.ts';
@@ -10,8 +11,8 @@ import { etymologyRouter } from './routes/etymology.ts';
 import { getManifest, dataAvailable } from './lib/dataStore.ts';
 import { rateLimit } from './lib/ratelimit.ts';
 
-// Load .env for local development. In production, Render injects real env vars
-// and there is no .env file, so this is a harmless no-op.
+// Load .env for local development. In production, real env vars are injected and
+// there is no .env file, so this is a harmless no-op.
 const loadEnvFile = (process as { loadEnvFile?: (path?: string) => void }).loadEnvFile;
 try {
   loadEnvFile?.('.env');
@@ -21,16 +22,19 @@ try {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, '..');
-
-const isProd = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT) || 3000;
+
+// Serve the built SPA when it exists (production single-service). In local dev the
+// client is served by Vite on :5173, so dist/client may be absent — that's fine.
+const clientDir = path.join(ROOT, 'dist', 'client');
+const hasClient = fs.existsSync(path.join(clientDir, 'index.html'));
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
-if (!isProd) app.use(cors());
+app.use(cors());
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, env: isProd ? 'production' : 'development', data: dataAvailable() });
+  res.json({ ok: true, client: hasClient, data: dataAvailable() });
 });
 
 app.get('/api/manifest', (_req, res) => {
@@ -53,9 +57,7 @@ app.use('/api', searchRouter);
 app.use('/api', alignRouter);
 app.use('/api', etymologyRouter);
 
-// In production, the Express server also serves the built SPA.
-if (isProd) {
-  const clientDir = path.join(ROOT, 'dist', 'client');
+if (hasClient) {
   app.use(express.static(clientDir));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
@@ -64,7 +66,5 @@ if (isProd) {
 }
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(
-    `[server] listening on http://localhost:${PORT} (${isProd ? 'production' : 'development'})`,
-  );
+  console.log(`[server] listening on :${PORT} — client ${hasClient ? 'served' : 'not bundled (dev)'}`);
 });
